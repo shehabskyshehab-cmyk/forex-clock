@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ساعة جلسات الفوركس</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+/* VOICE: a trading-desk instrument, calm and exact
+   IDEA: a 24-hour world clock with four session rings, like a broker's wall clock
+   PICTURE: large dial, coloured arcs per session, one sweeping hand, overlap wedge
+   COLOUR and TYPE: near-black desk / white paper, four session hues; Plex Arabic + Plex Mono
+   LAYOUT: dial first, session list beside it, stacks under 760px */
+:root{color-scheme:light dark;
+ --bg:light-dark(#f6f7f9,#0b0e13);--panel:light-dark(#ffffff,#12161d);--ink:light-dark(#11151b,#e9edf2);
+ --mute:light-dark(#5d6672,#8a94a2);--line:light-dark(#e3e6ea,#222833);--track:light-dark(#eceef1,#1a1f28);
+ --syd:#14a89a;--tyo:#e5484d;--lon:#3f72ff;--ny:#e9a13b;--open:#1fae5b;--ov:light-dark(rgba(63,114,255,.08),rgba(120,150,255,.10))}
+:root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "IBM Plex Sans Arabic",system-ui,sans-serif;overflow-x:clip}
+.wrap{max-width:1100px;margin:0 auto;padding:clamp(16px,3vw,40px) max(4vw,14px)}
+h1{font-size:clamp(22px,3vw,30px);line-height:1.1;margin:0 0 4px;font-weight:700}
+.sub{color:var(--mute);font-size:14px;margin:0 0 20px}
+.grid{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:clamp(16px,3vw,36px);align-items:center}
+.dial{background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:clamp(10px,2vw,20px)}
+.dial svg{display:block;width:100%;height:auto;direction:ltr}
+.num{font-family:"IBM Plex Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums;direction:ltr;unicode-bidi:isolate}
+.list{display:grid;gap:10px}
+.row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.dot{width:14px;height:14px;border-radius:50%}
+.name{font-weight:600}
+.hrs{color:var(--mute);font-size:13px}
+.st{text-align:left;white-space:nowrap}
+.chip{display:inline-block;font-size:13px;font-weight:600;padding:2px 10px;border-radius:99px;background:var(--track);color:var(--mute)}
+.chip.on{background:color-mix(in srgb,var(--open) 16%,transparent);color:var(--open)}
+.cd{display:block;font-size:13px;color:var(--mute);margin-top:3px}
+.row.ov{background:var(--ov)}
+.mkt{margin-top:14px;font-size:14px;color:var(--mute)}
+.mkt b{color:var(--ink)}
+@media(max-width:760px){.grid{grid-template-columns:minmax(0,1fr)}}
+@media(prefers-reduced-motion:reduce){.hand{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>ساعة جلسات الفوركس</h1>
+  <p class="sub">الأوقات بتوقيتك: <span id="tzname" class="num"></span>، وتتحدث كل ثانية</p>
+  <div class="grid">
+    <div class="dial"><svg id="clock" viewBox="0 0 420 420" role="img" aria-label="ساعة 24 ساعة لجلسات التداول"></svg></div>
+    <div>
+      <div class="list" id="list"></div>
+      <p class="mkt" id="mkt"></p>
+    </div>
+  </div>
+</div>
+<script>
+{
+const SESS=[
+ {id:'syd',n:'سيدني',en:'Sydney',tz:'Australia/Sydney',s:8,e:17,r:176},
+ {id:'tyo',n:'طوكيو',en:'Tokyo',tz:'Asia/Tokyo',s:9,e:18,r:152},
+ {id:'lon',n:'لندن',en:'London',tz:'Europe/London',s:8,e:17,r:128},
+ {id:'ny',n:'نيويورك',en:'New York',tz:'America/New_York',s:8,e:17,r:104}];
+const myTz=Intl.DateTimeFormat().resolvedOptions().timeZone;
+document.getElementById('tzname').textContent=myTz;
+const fmtCache={};
+function parts(date,tz){
+  const f=fmtCache[tz]||(fmtCache[tz]=new Intl.DateTimeFormat('en-US',{timeZone:tz,hourCycle:'h23',weekday:'short',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}));
+  const o={};for(const p of f.formatToParts(date))o[p.type]=p.value;return o}
+function offMin(date,tz){const p=parts(date,tz);return (Date.UTC(+p.year,p.month-1,+p.day,+p.hour%24,+p.minute,+p.second)-date.getTime())/60000}
+function zoned(y,m,d,h,tz){const t=Date.UTC(y,m,d,h);const o=offMin(new Date(t),tz);let r=t-o*60000;const o2=offMin(new Date(r),tz);if(o2!==o)r=t-o2*60000;return r}
+function windows(now,s){
+  const seen=new Set(),w=[];
+  for(let d=-2;d<=8;d++){
+    const p=parts(new Date(now+d*864e5),s.tz);
+    if(p.weekday==='Sat'||p.weekday==='Sun')continue;
+    const st=zoned(+p.year,p.month-1,+p.day,s.s,s.tz);if(seen.has(st))continue;seen.add(st);
+    w.push([st,zoned(+p.year,p.month-1,+p.day,s.e,s.tz)])}
+  return w.sort((a,b)=>a[0]-b[0])}
+function status(now,w){for(const x of w)if(x[0]<=now&&now<x[1])return{on:true,st:x[0],en:x[1]};
+  const n=w.find(x=>x[0]>now);return{on:false,st:n[0],en:n[1]}}
+const hm=t=>new Intl.DateTimeFormat('en-GB',{hour:'2-digit',minute:'2-digit',hour12:false}).format(t);
+const dayName=t=>new Intl.DateTimeFormat('ar',{weekday:'long'}).format(t);
+function dur(ms){const m=Math.max(0,Math.round(ms/60000)),h=Math.floor(m/60),mm=m%60;return h?`${h}س ${mm}د`:`${mm}د`}
+function ang(t){const p=parts(new Date(t),myTz);return((+p.hour%24)+(+p.minute)/60+(+p.second)/3600)/24*360}
+const C=210;
+function xy(r,a){const rad=(a-90)*Math.PI/180;return[C+r*Math.cos(rad),C+r*Math.sin(rad)]}
+function arc(r,a0,sweep){sweep=Math.min(sweep,359.9);const[x0,y0]=xy(r,a0),[x1,y1]=xy(r,a0+sweep);
+  return`M${x0.toFixed(2)} ${y0.toFixed(2)}A${r} ${r} 0 ${sweep>180?1:0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`}
+function wedge(r0,r1,a0,sweep){const[a,b]=xy(r1,a0),[c,d]=xy(r1,a0+sweep),[e,f]=xy(r0,a0+sweep),[g,h]=xy(r0,a0);const L=sweep>180?1:0;
+  return`M${a} ${b}A${r1} ${r1} 0 ${L} 1 ${c} ${d}L${e} ${f}A${r0} ${r0} 0 ${L} 0 ${g} ${h}Z`}
+function marketOpen(now){const p=parts(new Date(now),'America/New_York'),h=+p.hour%24;
+  if(p.weekday==='Sat')return false;if(p.weekday==='Fri'&&h>=17)return false;if(p.weekday==='Sun'&&h<17)return false;return true}
+const svg=document.getElementById('clock'),list=document.getElementById('list'),mkt=document.getElementById('mkt');
+function render(){
+  const now=Date.now(),open=marketOpen(now);
+  const rows=SESS.map(s=>{const w=windows(now,s);return{s,w,...status(now,w)}});
+  const lon=rows[2].w,ny=rows[3].w,ovw=[];
+  for(const a of lon)for(const b of ny){const st=Math.max(a[0],b[0]),en=Math.min(a[1],b[1]);if(st<en)ovw.push([st,en])}
+  const ov=status(now,ovw.sort((a,b)=>a[0]-b[0]));
+  let g='';
+  g+=`<path d="${wedge(88,190,ang(ov.st),(ov.en-ov.st)/864e5*360)}" fill="var(--ov)"/>`;
+  for(let h=0;h<24;h++){const[a,b]=xy(194,h*15),[c,d]=xy(h%6?198:202,h*15);g+=`<line x1="${a}" y1="${b}" x2="${c}" y2="${d}" stroke="var(--mute)" stroke-width="${h%6?1:2}"/>`;
+    if(h%3===0){const[tx,ty]=xy(184-0,h*15);}}
+  for(let h=0;h<24;h+=3){const[tx,ty]=xy(206+6,h*15);g+=`<text x="${tx}" y="${ty}" font-size="11" fill="var(--mute)" text-anchor="middle" dominant-baseline="middle" font-family="IBM Plex Mono,monospace">${String(h).padStart(2,'0')}</text>`}
+  for(const r of rows){const R=r.s.r,col=`var(--${r.s.id})`;
+    g+=`<circle cx="${C}" cy="${C}" r="${R}" fill="none" stroke="var(--track)" stroke-width="18"/>`;
+    const within=r.on||r.st-now<864e5;
+    g+=`<path d="${arc(R,ang(r.st),(r.en-r.st)/864e5*360)}" fill="none" stroke="${col}" stroke-width="18" stroke-linecap="round" opacity="${r.on?1:within?.45:.18}"/>`;
+    const[lx,ly]=xy(R,ang(r.st)+((r.en-r.st)/864e5*360)/2);
+    g+=`<text x="${lx}" y="${ly}" font-size="10" font-weight="600" fill="#fff" text-anchor="middle" dominant-baseline="middle" font-family="IBM Plex Sans Arabic,sans-serif" opacity="${r.on||within?1:.5}">${r.s.en}</text>`}
+  const a=ang(now),[hx,hy]=xy(200,a),[tx,ty]=xy(-14,a);
+  g+=`<line class="hand" x1="${tx}" y1="${ty}" x2="${hx}" y2="${hy}" stroke="var(--ink)" stroke-width="2.5" stroke-linecap="round"/><circle cx="${hx}" cy="${hy}" r="4" fill="var(--ink)"/>`;
+  g+=`<circle cx="${C}" cy="${C}" r="78" fill="var(--panel)"/>`;
+  g+=`<text x="${C}" y="${C-8}" font-size="30" font-weight="600" fill="var(--ink)" text-anchor="middle" font-family="IBM Plex Mono,monospace">${new Intl.DateTimeFormat('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(now)}</text>`;
+  g+=`<text x="${C}" y="${C+20}" font-size="13" fill="var(--mute)" text-anchor="middle" font-family="IBM Plex Sans Arabic,sans-serif">${dayName(now)}</text>`;
+  g+=`<text x="${C}" y="${C+42}" font-size="13" font-weight="600" fill="${open?'var(--open)':'var(--mute)'}" text-anchor="middle" font-family="IBM Plex Sans Arabic,sans-serif">${open?'السوق مفتوح':'السوق مغلق'}</text>`;
+  svg.innerHTML=g;
+  const rowHtml=(color,name,hrs,on,txt,cls='')=>`<div class="row ${cls}"><span class="dot" style="background:${color}"></span><div><div class="name">${name}</div><div class="hrs"><span class="num">${hrs}</span></div></div><div class="st"><span class="chip ${on?'on':''}">${on?'مفتوحة':'مغلقة'}</span><span class="cd">${txt}</span></div></div>`;
+  list.innerHTML=rows.map(r=>rowHtml(`var(--${r.s.id})`,r.s.n,`${hm(r.st)} – ${hm(r.en)}`,r.on,
+      r.on?`تغلق بعد <span class="num">${dur(r.en-now)}</span>`:`تفتح بعد <span class="num">${dur(r.st-now)}</span>${r.st-now>864e5?' ('+dayName(r.st)+')':''}`)).join('')
+    +rowHtml('linear-gradient(90deg,var(--lon) 50%,var(--ny) 50%)','تداخل لندن + نيويورك',`${hm(ov.st)} – ${hm(ov.en)}`,ov.on,
+      ov.on?`ينتهي بعد <span class="num">${dur(ov.en-now)}</span>`:`يبدأ بعد <span class="num">${dur(ov.st-now)}</span>`,'ov');
+  const openN=rows.filter(r=>r.on).length;
+  mkt.innerHTML=open?`الجلسات المفتوحة الآن: <b class="num">${openN}</b> من 4. أقوى حركة تكون عادة وقت تداخل لندن ونيويورك.`
+    :`السوق مغلق في عطلة نهاية الأسبوع، ويفتح مع جلسة سيدني.`;
+}
+render();setInterval(render,1000);
+}
+</script>
+</body>
+</html>
